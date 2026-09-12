@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+dist-server/
+
+# Local databases & logs
+*.db
+*.db-journal
+local.db
+local.db-journal
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment & SSL secrets
+.env
+.env.local
+.env.*.local
+ssl/*.pem
+ssl/*.key
+ssl/*.crt
+
+# Archives & Temp
+*.zip
+*.tar.gz
+scratch/
+.system_generated/
+.DS_Store
+Thumbs.db
