@@ -8,6 +8,7 @@ import { db, recordAuditLog, cleanupRetentionData } from './db';
 import * as schema from '../drizzle/schema';
 import { generateSecureToken, generateId } from './security/tokens';
 import { checkRateLimit } from './security/rateLimit';
+import os from 'os';
 import { JWT_SECRET } from './_core/context';
 
 const authRouter = router({
@@ -151,7 +152,7 @@ const adminRouter = router({
   listSessions: adminProcedure
     .query(async () => {
       const now = Date.now();
-      const allSessions = await db.select().from(schema.sessions).orderBy(desc(schema.sessions.createdAt));
+      const allSessions = await db.select().from(schema.sessions).orderBy(desc(schema.sessions.updatedAt));
 
       // Check and update expired status dynamically
       const updated = allSessions.map(sess => {
@@ -229,6 +230,29 @@ const adminRouter = router({
         .from(schema.auditLogs)
         .orderBy(desc(schema.auditLogs.createdAt))
         .limit(input.limit);
+    }),
+
+  getServerInfo: adminProcedure
+    .query(async () => {
+      const nets = os.networkInterfaces();
+      let ip = '127.0.0.1';
+      for (const name of Object.keys(nets)) {
+        for (const net of nets[name] || []) {
+          if (net.family === 'IPv4' && !net.internal) {
+            ip = net.address;
+            break;
+          }
+        }
+      }
+      const httpPort = Number(process.env.PORT) || 3000;
+      const httpsPort = Number(process.env.HTTPS_PORT) || 3443;
+      return {
+        localIp: ip,
+        httpPort,
+        httpsPort,
+        lanHttpsUrl: `https://${ip}:${httpsPort}`,
+        lanHttpUrl: `http://${ip}:${httpPort}`,
+      };
     }),
 });
 

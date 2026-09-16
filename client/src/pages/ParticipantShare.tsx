@@ -22,7 +22,7 @@ export const ParticipantShare: React.FC = () => {
   const token = params?.token || '';
 
   // State
-  const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
+  const [hasAgreedToTerms, setHasAgreedToTerms] = useState(true);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [currentCoords, setCurrentCoords] = useState<{
     latitude: number;
@@ -427,10 +427,10 @@ export const ParticipantShare: React.FC = () => {
             aria-label="Agree and Start Sharing Location"
           >
             <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
-            <span>{recordConsentMutation.isLoading ? 'Starting...' : 'Agree & Start Sharing Location'}</span>
+            <span>{recordConsentMutation.isLoading ? 'Requesting Permission...' : 'Allow Location & Start Sharing'}</span>
           </button>
           <p className="text-center text-xs text-slate-500 mt-2">
-            No tracking occurs until you click Agree and grant browser permission.
+            Clicking this will prompt your browser to allow GPS location access.
           </p>
         </div>
       </div>

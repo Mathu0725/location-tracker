@@ -34,6 +34,9 @@ export const AdminDashboard: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [tunnelUrl, setTunnelUrl] = useState(() => {
+    return typeof window !== 'undefined' ? localStorage.getItem('public_tunnel_url') || '' : '';
+  });
   const [newSessionResult, setNewSessionResult] = useState<{
     participantName: string;
     token: string;
@@ -60,7 +63,7 @@ export const AdminDashboard: React.FC = () => {
     },
   });
 
-  // Queries
+  // Queries: Continuous live short-polling every 3 seconds so incoming locations appear automatically
   const {
     data: sessions = [],
     isLoading: sessionsLoading,
@@ -68,11 +71,7 @@ export const AdminDashboard: React.FC = () => {
     refetch: refetchSessions,
   } = trpc.admin.listSessions.useQuery(undefined, {
     enabled: isAdmin,
-    // Short polling: poll every 15s if there is at least one active session
-    refetchInterval: (data) => {
-      const hasActive = data?.some((s) => s.status === 'active');
-      return hasActive ? 15000 : false;
-    },
+    refetchInterval: 3000, // Poll every 3 seconds continuously
   });
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) || sessions[0] || null;
@@ -81,7 +80,7 @@ export const AdminDashboard: React.FC = () => {
     { sessionId: selectedSession?.id || '' },
     {
       enabled: isAdmin && !!selectedSession?.id,
-      refetchInterval: selectedSession?.status === 'active' ? 15000 : false,
+      refetchInterval: 3000, // Refresh selected participant breadcrumbs every 3s
     }
   );
 
@@ -89,6 +88,11 @@ export const AdminDashboard: React.FC = () => {
     { limit: 30 },
     { enabled: isAdmin && isAuditOpen }
   );
+
+  const { data: serverInfo } = trpc.admin.getServerInfo.useQuery(undefined, {
+    enabled: isAdmin,
+    staleTime: 60000,
+  });
 
   // Mutations
   const createSessionMutation = trpc.admin.createSession.useMutation({
@@ -116,11 +120,33 @@ export const AdminDashboard: React.FC = () => {
     },
   });
 
+  // Smart URL generator: Uses Public Tunnel > LAN HTTPS > Origin
+  const getShareUrl = (token: string, mode?: 'tunnel' | 'lan' | 'local') => {
+    if (mode === 'tunnel' && tunnelUrl.trim()) {
+      return `${tunnelUrl.trim().replace(/\/$/, '')}/share/${token}`;
+    }
+    if (mode === 'lan' && serverInfo?.lanHttpsUrl) {
+      return `${serverInfo.lanHttpsUrl}/share/${token}`;
+    }
+    if (mode === 'local') {
+      return `${window.location.origin}/share/${token}`;
+    }
+    // Default smart selection:
+    if (tunnelUrl.trim()) {
+      return `${tunnelUrl.trim().replace(/\/$/, '')}/share/${token}`;
+    }
+    if (serverInfo?.lanHttpsUrl && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      return `${serverInfo.lanHttpsUrl}/share/${token}`;
+    }
+    return `${window.location.origin}/share/${token}`;
+  };
+
   // Copy Link Helper
-  const handleCopyLink = (token: string) => {
-    const url = `${window.location.origin}/share/${token}`;
+  const handleCopyLink = (token: string, mode?: 'tunnel' | 'lan' | 'local') => {
+    const url = getShareUrl(token, mode);
     navigator.clipboard.writeText(url);
-    setCopiedToken(token);
+    const key = mode ? `${token}-${mode}` : token;
+    setCopiedToken(key);
     setTimeout(() => setCopiedToken(null), 2500);
   };
 
@@ -286,8 +312,9 @@ export const AdminDashboard: React.FC = () => {
                 {sessions.length}
               </span>
             </div>
-            <span className="text-xs text-slate-400">
-              {activeCount > 0 ? 'Auto-polling active (15s)' : 'Polling paused'}
+            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live auto-sync (3s)
             </span>
           </div>
 
@@ -507,17 +534,47 @@ export const AdminDashboard: React.FC = () => {
                   Share this secure link with <strong className="text-slate-700">{newSessionResult.participantName}</strong>. Tracking will only begin once they accept informed consent.
                 </p>
 
-                <div className="mt-5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="text-[11px] font-semibold text-slate-400 uppercase">Participant Link</div>
-                  <div className="text-xs font-mono text-emerald-800 break-all select-all mt-1">
-                    {window.location.origin}/share/{newSessionResult.token}
+                {/* Smart Link preview & options */}
+                <div className="mt-5 space-y-3">
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">
+                        {tunnelUrl.trim() ? 'Public Internet Link (Tunnel)' : 'Mobile HTTPS Link (Recommended)'}
+                      </span>
+                      <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full font-semibold">
+                        GPS Ready
+                      </span>
+                    </div>
+                    <div className="text-xs font-mono text-emerald-950 break-all select-all mt-1.5 p-2 bg-white rounded-lg border border-emerald-200/60">
+                      {getShareUrl(newSessionResult.token)}
+                    </div>
+                  </div>
+
+                  {/* Public Tunnel Configuration Input */}
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                      Public URL (Optional, for WhatsApp / Remote links)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="e.g. https://your-name.loca.lt"
+                      value={tunnelUrl}
+                      onChange={(e) => {
+                        setTunnelUrl(e.target.value);
+                        localStorage.setItem('public_tunnel_url', e.target.value);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 font-mono"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      For phones outside your Wi-Fi, run <code>npx localtunnel --port 3000</code> in a terminal and paste that URL here.
+                    </span>
                   </div>
                 </div>
 
                 <div className="mt-5 flex gap-3">
                   <button
                     onClick={() => handleCopyLink(newSessionResult.token)}
-                    className="flex-1 py-3 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center gap-2 focus:ring-2 focus:ring-emerald-500"
+                    className="flex-1 py-3 px-4 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 flex items-center justify-center gap-2 focus:ring-2 focus:ring-emerald-500 shadow-sm"
                   >
                     {copiedToken === newSessionResult.token ? (
                       <>
@@ -533,7 +590,7 @@ export const AdminDashboard: React.FC = () => {
                   </button>
 
                   <a
-                    href={`/share/${newSessionResult.token}`}
+                    href={getShareUrl(newSessionResult.token)}
                     target="_blank"
                     rel="noreferrer"
                     className="py-3 px-4 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 flex items-center justify-center gap-1.5"
