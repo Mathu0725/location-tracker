@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import * as schema from '../drizzle/schema';
 import { generateId } from './security/tokens';
 
-const dbUrl = process.env.DATABASE_URL || 'file:local.db';
+const dbUrl = process.env.DATABASE_URL || (process.env.VERCEL ? 'file:/tmp/local.db' : 'file:local.db');
 export const client = createClient({ url: dbUrl });
 export const db = drizzle(client, { schema });
 

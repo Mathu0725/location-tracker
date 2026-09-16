@@ -1,17 +1,12 @@
 import fs from 'fs';
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
 import path from 'path';
 import os from 'os';
 import http from 'http';
 import https from 'https';
 import { fileURLToPath } from 'url';
-import * as trpcExpress from '@trpc/server/adapters/express';
-import { appRouter } from './routers';
-import { createContext } from './_core/context';
-import { initDb, cleanupRetentionData } from './db';
+import { app, initServerless } from './app';
+import { cleanupRetentionData } from './db';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,45 +24,12 @@ function getLocalIp(): string {
 }
 
 async function startServer() {
-  await initDb();
+  await initServerless();
   console.log('Database initialized successfully.');
 
-  const app = express();
   const PORT = Number(process.env.PORT) || 3000;
   const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
   const localIp = getLocalIp();
-
-  // In local dev and LAN testing, disable HSTS, COOP, and CSP that break HTTP/Vite
-  app.use(
-    helmet({
-      contentSecurityPolicy: false,
-      crossOriginEmbedderPolicy: false,
-      crossOriginOpenerPolicy: false,
-      crossOriginResourcePolicy: false,
-      originAgentCluster: false,
-      hsts: false,
-    })
-  );
-
-  app.use(cors({
-    origin: true,
-    credentials: true,
-  }));
-
-  app.use(cookieParser());
-  app.use(express.json());
-
-  app.use(
-    '/api/trpc',
-    trpcExpress.createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
-
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'healthy', time: Date.now(), ip: localIp });
-  });
 
   setInterval(async () => {
     try {
@@ -90,7 +52,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const clientDist = path.resolve(__dirname, '../dist/client');
+    const clientDist = path.resolve(__dirname, '../dist');
     app.use(express.static(clientDist));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'));
